@@ -1,9 +1,10 @@
+//! Parser functions for EBNF grammars.
+
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until, take_while1},
+    bytes::complete::{tag, take_until, take_while},
     character::complete::{alpha1, alphanumeric1, space0},
-    character::is_alphanumeric,
-    combinator::{map, peek, recognize},
+    combinator::recognize,
     multi::many0,
     sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult,
@@ -11,6 +12,9 @@ use nom::{
 
 use crate::ebnf::{Grammar, Identifier, Lhs, Rhs, Rule, Terminal};
 
+/// Parse a string literal.
+///
+/// Terminals may use either single or double quotes.
 pub fn terminal(input: &str) -> IResult<&str, Terminal> {
     // TODO: Ensure parsing with balanced parens.
     let (rem, matched) = alt((
@@ -20,6 +24,10 @@ pub fn terminal(input: &str) -> IResult<&str, Terminal> {
     Ok((rem, Terminal(matched.to_owned())))
 }
 
+/// Parse an identifier.
+///
+/// Identifiers must begin with a letter, and contain letters, numbers, or
+/// underscores.
 pub fn identifier(input: &str) -> IResult<&str, Identifier> {
     let (rem, matched) = recognize(pair(
         alt((alpha1, tag("_"))),
@@ -28,11 +36,13 @@ pub fn identifier(input: &str) -> IResult<&str, Identifier> {
     Ok((rem, Identifier(matched.to_owned())))
 }
 
+/// Parse the left hand side of a rule.
 pub fn lhs(input: &str) -> IResult<&str, Lhs> {
     let (rem, matched) = identifier(input)?;
     Ok((rem, Lhs(matched)))
 }
 
+/// Parse the right hand side of a rule.
 pub fn rhs(input: &str) -> IResult<&str, Rhs> {
     let (rem, matched) = preceded(
         space0,
@@ -51,6 +61,10 @@ pub fn rhs(input: &str) -> IResult<&str, Rhs> {
     Ok((rem, matched))
 }
 
+/// Parse a rule.
+///
+/// Rules must contain an lhs and rhs seperated by '='. Rules are terminated by
+/// ';'.
 pub fn rule(input: &str) -> IResult<&str, Rule> {
     // TODO: Take until non-terminal ';'
     let (rem, (matched_lhs, matched_rhs)) = terminated(
@@ -68,8 +82,13 @@ pub fn rule(input: &str) -> IResult<&str, Rule> {
     ))
 }
 
+/// Parse a grammar.
+///
+/// Grammars contain 0 or more rules. Rules must be separated with ';'
+/// characters, optionally followed by newline(s).
 pub fn grammar(input: &str) -> IResult<&str, Grammar> {
-    let (rem, rules) = many0(preceded(space0, rule))(input)?;
+    let whitespace = take_while(move |c| " \t\r\n".contains(c));
+    let (rem, rules) = many0(preceded(whitespace, rule))(input)?;
     Ok((rem, Grammar { rules }))
 }
 
@@ -341,6 +360,24 @@ mod tests {
             },
             TestCase {
                 input: "a = b; c = d;",
+                out: Some(Ok((
+                    "",
+                    Grammar {
+                        rules: vec![
+                            Rule {
+                                lhs: Lhs(Identifier("a".to_owned())),
+                                rhs: Rhs::Identifier(Identifier("b".to_owned())),
+                            },
+                            Rule {
+                                lhs: Lhs(Identifier("c".to_owned())),
+                                rhs: Rhs::Identifier(Identifier("d".to_owned())),
+                            },
+                        ],
+                    },
+                ))),
+            },
+            TestCase {
+                input: "a = b;\n\n c = d;",
                 out: Some(Ok((
                     "",
                     Grammar {
