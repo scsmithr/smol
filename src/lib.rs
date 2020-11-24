@@ -1,3 +1,5 @@
+mod ebnf;
+
 #[cfg(test)]
 mod tests {
     #[test]
