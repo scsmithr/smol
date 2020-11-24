@@ -20,6 +20,7 @@ pub enum Rhs {
     Optional(Box<Rhs>),
     Repeat(Box<Rhs>),
     Group(Box<Rhs>),
+    Exception(Box<Rhs>, Box<Rhs>),
     Alternation(Box<Rhs>, Box<Rhs>),
     Concatenation(Box<Rhs>, Box<Rhs>),
 }

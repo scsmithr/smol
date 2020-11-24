@@ -5,13 +5,14 @@ use nom::{
     character::is_alphanumeric,
     combinator::{map, peek, recognize},
     multi::many0,
-    sequence::{delimited, pair, preceded, separated_pair},
+    sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult,
 };
 
 use crate::ebnf::{Grammar, Identifier, Lhs, Rhs, Rule, Terminal};
 
 pub fn terminal(input: &str) -> IResult<&str, Terminal> {
+    // TODO: Ensure parsing with balanced parens.
     let (rem, matched) = alt((
         delimited(tag("\""), take_until("\""), tag("\"")),
         delimited(tag("\'"), take_until("\'"), tag("\'")),
@@ -41,12 +42,35 @@ pub fn rhs(input: &str) -> IResult<&str, Rhs> {
             rhs_optional,
             rhs_alternation,
             rhs_concatenation,
+            rhs_exception,
             rhs_terminal,
             rhs_identifier,
         )),
     )(input)?;
 
     Ok((rem, matched))
+}
+
+pub fn rule(input: &str) -> IResult<&str, Rule> {
+    // TODO: Take until non-terminal ';'
+    let (rem, (matched_lhs, matched_rhs)) = terminated(
+        separated_pair(take_until("="), tag("="), take_until(";")),
+        tag(";"),
+    )(input)?;
+    let (_, rule_lhs) = lhs(matched_lhs)?;
+    let (_, rule_rhs) = rhs(matched_rhs)?;
+    Ok((
+        rem,
+        Rule {
+            lhs: rule_lhs,
+            rhs: rule_rhs,
+        },
+    ))
+}
+
+pub fn grammar(input: &str) -> IResult<&str, Grammar> {
+    let (rem, rules) = many0(preceded(space0, rule))(input)?;
+    Ok((rem, Grammar { rules }))
 }
 
 fn rhs_identifier(input: &str) -> IResult<&str, Rhs> {
@@ -57,6 +81,12 @@ fn rhs_identifier(input: &str) -> IResult<&str, Rhs> {
 fn rhs_terminal(input: &str) -> IResult<&str, Rhs> {
     let (rem, matched) = terminal(input)?;
     Ok((rem, Rhs::Terminal(matched)))
+}
+
+fn rhs_exception(input: &str) -> IResult<&str, Rhs> {
+    let (rem, (matched1, matched2)) = separated_pair(take_until("-"), tag("-"), rhs)(input)?;
+    let (_, inner1) = rhs(matched1)?;
+    Ok((rem, Rhs::Exception(Box::new(inner1), Box::new(matched2))))
 }
 
 fn rhs_alternation(input: &str) -> IResult<&str, Rhs> {
@@ -200,12 +230,35 @@ mod tests {
                 ))),
             },
             TestCase {
+                input: "a | b | c",
+                out: Some(Ok((
+                    "",
+                    Rhs::Alternation(
+                        Box::new(Rhs::Identifier(Identifier("a".to_owned()))),
+                        Box::new(Rhs::Alternation(
+                            Box::new(Rhs::Identifier(Identifier("b".to_owned()))),
+                            Box::new(Rhs::Identifier(Identifier("c".to_owned()))),
+                        )),
+                    ),
+                ))),
+            },
+            TestCase {
                 input: "hello , world",
                 out: Some(Ok((
                     "",
                     Rhs::Concatenation(
                         Box::new(Rhs::Identifier(Identifier("hello".to_owned()))),
                         Box::new(Rhs::Identifier(Identifier("world".to_owned()))),
+                    ),
+                ))),
+            },
+            TestCase {
+                input: "hello - 'world'",
+                out: Some(Ok((
+                    "",
+                    Rhs::Exception(
+                        Box::new(Rhs::Identifier(Identifier("hello".to_owned()))),
+                        Box::new(Rhs::Terminal(Terminal("world".to_owned()))),
                     ),
                 ))),
             },
@@ -225,5 +278,87 @@ mod tests {
         ];
 
         assert_test_cases(rhs, tests);
+    }
+
+    #[test]
+    fn parse_rule() {
+        let tests = vec![
+            TestCase {
+                input: "a = b;",
+                out: Some(Ok((
+                    "",
+                    Rule {
+                        lhs: Lhs(Identifier("a".to_owned())),
+                        rhs: Rhs::Identifier(Identifier("b".to_owned())),
+                    },
+                ))),
+            },
+            TestCase {
+                input: "rule = lhs , \"=\" , rhs ;",
+                out: Some(Ok((
+                    "",
+                    Rule {
+                        lhs: Lhs(Identifier("rule".to_owned())),
+                        rhs: Rhs::Concatenation(
+                            Box::new(Rhs::Identifier(Identifier("lhs".to_owned()))),
+                            Box::new(Rhs::Concatenation(
+                                Box::new(Rhs::Terminal(Terminal("=".to_owned()))),
+                                Box::new(Rhs::Identifier(Identifier("rhs".to_owned()))),
+                            )),
+                        ),
+                    },
+                ))),
+            },
+            TestCase {
+                input: "a = b; c = d;",
+                out: Some(Ok((
+                    " c = d;",
+                    Rule {
+                        lhs: Lhs(Identifier("a".to_owned())),
+                        rhs: Rhs::Identifier(Identifier("b".to_owned())),
+                    },
+                ))),
+            },
+        ];
+
+        assert_test_cases(rule, tests);
+    }
+
+    #[test]
+    fn parse_grammar() {
+        let tests = vec![
+            TestCase {
+                input: "a = b;",
+                out: Some(Ok((
+                    "",
+                    Grammar {
+                        rules: vec![Rule {
+                            lhs: Lhs(Identifier("a".to_owned())),
+                            rhs: Rhs::Identifier(Identifier("b".to_owned())),
+                        }],
+                    },
+                ))),
+            },
+            TestCase {
+                input: "a = b; c = d;",
+                out: Some(Ok((
+                    "",
+                    Grammar {
+                        rules: vec![
+                            Rule {
+                                lhs: Lhs(Identifier("a".to_owned())),
+                                rhs: Rhs::Identifier(Identifier("b".to_owned())),
+                            },
+                            Rule {
+                                lhs: Lhs(Identifier("c".to_owned())),
+                                rhs: Rhs::Identifier(Identifier("d".to_owned())),
+                            },
+                        ],
+                    },
+                ))),
+            },
+        ];
+
+        assert_test_cases(grammar, tests);
     }
 }
