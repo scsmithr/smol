@@ -7,7 +7,7 @@ mod parser;
 
 /// A constant identifying production rules.
 #[derive(PartialEq, Eq, Debug)]
-pub struct Identifier(String);
+pub struct Identifier(pub String);
 
 impl Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -23,7 +23,7 @@ impl From<&str> for Identifier {
 
 /// A literal string.
 #[derive(PartialEq, Eq, Debug)]
-pub struct Terminal(String);
+pub struct Terminal(pub String);
 
 impl Display for Terminal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -39,7 +39,7 @@ impl From<&str> for Terminal {
 
 /// The lhs of a production rule.
 #[derive(PartialEq, Eq, Debug)]
-pub struct Lhs(Identifier);
+pub struct Lhs(pub Identifier);
 
 impl From<&str> for Lhs {
     fn from(s: &str) -> Self {
@@ -93,8 +93,8 @@ impl FromStr for Rhs {
 /// A production rule.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Rule {
-    lhs: Lhs,
-    rhs: Rhs,
+    pub lhs: Lhs,
+    pub rhs: Rhs,
 }
 
 impl Display for Rule {
@@ -115,7 +115,7 @@ impl FromStr for Rule {
 /// A set of rules.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Grammar {
-    rules: Vec<Rule>,
+    pub rules: Vec<Rule>,
 }
 
 impl Display for Grammar {
