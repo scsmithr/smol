@@ -10,7 +10,7 @@ use nom::{
     IResult,
 };
 
-use crate::ebnf::{Grammar, Identifier, Lhs, Rhs, Rule, Terminal};
+use crate::{Grammar, Identifier, Lhs, Rhs, Rule, Terminal};
 
 /// Parse a string literal.
 ///
