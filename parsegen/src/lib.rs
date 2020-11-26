@@ -3,12 +3,12 @@ use std::fmt::Debug;
 
 mod state;
 
-pub use state::Token;
+pub use state::{State, StateResult, Token};
 
-pub trait Rule: Copy + Debug + Eq {}
+pub trait ParserRule: Copy + Debug + Eq {}
 
-impl<T: Copy + Debug + Eq> Rule for T {}
+impl<T: Copy + Debug + Eq> ParserRule for T {}
 
-pub trait Parser<R: Rule> {
-    fn parse(rule: R, input: &str) -> Result<Token<R>>;
+pub trait Parser<R: ParserRule> {
+    fn parse(rule: R, input: &str) -> Result<Vec<Token<R>>>;
 }

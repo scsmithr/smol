@@ -15,7 +15,7 @@ pub fn generate(ast: DeriveInput) -> TokenStream {
     let generics = ast.generics;
 
     let generated_impl = generate_impl(name, &generics, &grammar);
-    let generated_rules = generate_rules_enum(&grammar);
+    let generated_rules = generate_rule_enum(&grammar);
 
     quote! {
         #generated_rules
@@ -67,8 +67,8 @@ fn generate_impl(name: Ident, generics: &Generics, grammar: &Grammar) -> TokenSt
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let parse_impl = quote! {
-        impl #impl_generics parsegen::Parser<Rules> for #name #ty_generics #where_clause {
-            fn parse(rule: Rules, input: &str) -> anyhow::Result<parsegen::Token<Rules>> {
+        impl #impl_generics parsegen::Parser<Rule> for #name #ty_generics #where_clause {
+            fn parse(rule: Rule, input: &str) -> anyhow::Result<std::vec::Vec<parsegen::Token<Rule>>> {
                 Err(anyhow::anyhow!("generated"))
             }
         }
@@ -76,7 +76,7 @@ fn generate_impl(name: Ident, generics: &Generics, grammar: &Grammar) -> TokenSt
     parse_impl
 }
 
-fn generate_rules_enum(grammar: &Grammar) -> TokenStream {
+fn generate_rule_enum(grammar: &Grammar) -> TokenStream {
     let rules = grammar
         .rules
         .iter()
@@ -84,7 +84,7 @@ fn generate_rules_enum(grammar: &Grammar) -> TokenStream {
 
     quote! {
         #[derive(Copy, Debug, Eq, Clone, PartialEq)]
-        pub enum Rules {
+        pub enum Rule {
             #( #rules ),*
         }
     }
@@ -143,12 +143,12 @@ mod tests {
         let g: Grammar = "a = 'b' ; c = 'd' ;".parse().unwrap();
         let expected = quote! {
             #[derive(Copy, Debug, Eq, Clone, PartialEq)]
-            pub enum Rules {
+            pub enum Rule {
                 a,
                 c
             }
         };
-        let ts = generate_rules_enum(&g);
+        let ts = generate_rule_enum(&g);
         assert_eq!(ts.to_string(), expected.to_string());
     }
 }

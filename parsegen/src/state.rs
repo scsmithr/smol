@@ -1,23 +1,28 @@
 use anyhow::anyhow; // TODO: Proper errors
 
-use crate::Rule;
+use crate::ParserRule;
 
 pub type StateResult<T> = Result<T, T>;
 
 /// Parser state.
-pub struct State<'a, R> {
+#[derive(Debug)]
+pub struct State<'a, R: ParserRule> {
     /// A list of tokens that have been matched.
     tokens: Vec<Token<'a, R>>,
     cursor: Position<'a>,
 }
 
-impl<'a, R: Rule> State<'a, R> {
+impl<'a, R: ParserRule> State<'a, R> {
     pub fn new(input: &'a str) -> Result<Self, anyhow::Error> {
         let cursor = Position::new(input, 0)?;
         Ok(State {
             tokens: Vec::new(),
             cursor,
         })
+    }
+
+    pub fn tokens(self) -> Vec<Token<'a, R>> {
+        self.tokens
     }
 
     /// Tokenizes for some rule using the provided function. Errors resulting
@@ -131,12 +136,13 @@ impl<'a> Position<'a> {
     }
 }
 
-pub struct Token<'a, R> {
+#[derive(Debug)]
+pub struct Token<'a, R: ParserRule> {
     rule: R,
     span: Span<'a>,
 }
 
-impl<'a, R: Rule> Token<'a, R> {
+impl<'a, R: ParserRule> Token<'a, R> {
     pub fn rule(&self) -> R {
         self.rule
     }
