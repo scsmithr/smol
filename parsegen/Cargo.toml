@@ -1,0 +1,9 @@
+[package]
+name = "parsegen"
+version = "0.1.0"
+authors = ["Sean Smith <scsmithr@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+ebnf = { path = "../ebnf" }
+anyhow = "1.0"
