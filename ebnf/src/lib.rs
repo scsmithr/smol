@@ -92,22 +92,22 @@ impl FromStr for Rhs {
 
 /// A production rule.
 #[derive(PartialEq, Eq, Debug)]
-pub struct Rule {
+pub struct Production {
     pub lhs: Lhs,
     pub rhs: Rhs,
 }
 
-impl Display for Rule {
+impl Display for Production {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} = {} ;", self.lhs, self.rhs)
     }
 }
 
-impl FromStr for Rule {
+impl FromStr for Production {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (_, rule) = parser::rule(s)?;
+        let (_, rule) = parser::production(s)?;
         Ok(rule)
     }
 }
@@ -115,7 +115,7 @@ impl FromStr for Rule {
 /// A set of rules.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Grammar {
-    pub rules: Vec<Rule>,
+    pub rules: Vec<Production>,
 }
 
 impl Display for Grammar {
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn lossless_rule() {
-        let rule = Rule {
+        let rule = Production {
             lhs: Lhs("a".into()),
             rhs: Rhs::Identifier("b".into()),
         };
@@ -190,11 +190,11 @@ mod tests {
     fn lossless_grammar() {
         let g = Grammar {
             rules: vec![
-                Rule {
+                Production {
                     lhs: Lhs("a".into()),
                     rhs: Rhs::Identifier("b".into()),
                 },
-                Rule {
+                Production {
                     lhs: Lhs("c".into()),
                     rhs: Rhs::Identifier("d".into()),
                 },

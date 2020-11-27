@@ -10,7 +10,7 @@ use nom::{
     IResult,
 };
 
-use crate::{Grammar, Identifier, Lhs, Rhs, Rule, Terminal};
+use crate::{Grammar, Identifier, Lhs, Production, Rhs, Terminal};
 
 /// Parse a string literal.
 ///
@@ -65,7 +65,7 @@ pub fn rhs(input: &str) -> IResult<&str, Rhs> {
 ///
 /// Rules must contain an lhs and rhs seperated by '='. Rules are terminated by
 /// ';'.
-pub fn rule(input: &str) -> IResult<&str, Rule> {
+pub fn production(input: &str) -> IResult<&str, Production> {
     // TODO: Take until non-terminal ';'
     let (rem, (matched_lhs, matched_rhs)) = terminated(
         separated_pair(take_until("="), tag("="), take_until(";")),
@@ -75,7 +75,7 @@ pub fn rule(input: &str) -> IResult<&str, Rule> {
     let (_, rule_rhs) = rhs(matched_rhs)?;
     Ok((
         rem,
-        Rule {
+        Production {
             lhs: rule_lhs,
             rhs: rule_rhs,
         },
@@ -88,7 +88,7 @@ pub fn rule(input: &str) -> IResult<&str, Rule> {
 /// characters, optionally followed by newline(s).
 pub fn grammar(input: &str) -> IResult<&str, Grammar> {
     let whitespace = take_while(move |c| " \t\r\n".contains(c));
-    let (rem, rules) = many0(preceded(whitespace, rule))(input)?;
+    let (rem, rules) = many0(preceded(whitespace, production))(input)?;
     Ok((rem, Grammar { rules }))
 }
 
@@ -306,7 +306,7 @@ mod tests {
                 input: "a = b;",
                 out: Some(Ok((
                     "",
-                    Rule {
+                    Production {
                         lhs: Lhs(Identifier("a".to_owned())),
                         rhs: Rhs::Identifier(Identifier("b".to_owned())),
                     },
@@ -316,7 +316,7 @@ mod tests {
                 input: "rule = lhs , \"=\" , rhs ;",
                 out: Some(Ok((
                     "",
-                    Rule {
+                    Production {
                         lhs: Lhs(Identifier("rule".to_owned())),
                         rhs: Rhs::Concatenation(
                             Box::new(Rhs::Identifier(Identifier("lhs".to_owned()))),
@@ -332,7 +332,7 @@ mod tests {
                 input: "a = b; c = d;",
                 out: Some(Ok((
                     " c = d;",
-                    Rule {
+                    Production {
                         lhs: Lhs(Identifier("a".to_owned())),
                         rhs: Rhs::Identifier(Identifier("b".to_owned())),
                     },
@@ -340,7 +340,7 @@ mod tests {
             },
         ];
 
-        assert_test_cases(rule, tests);
+        assert_test_cases(production, tests);
     }
 
     #[test]
@@ -351,7 +351,7 @@ mod tests {
                 out: Some(Ok((
                     "",
                     Grammar {
-                        rules: vec![Rule {
+                        rules: vec![Production {
                             lhs: Lhs(Identifier("a".to_owned())),
                             rhs: Rhs::Identifier(Identifier("b".to_owned())),
                         }],
@@ -364,11 +364,11 @@ mod tests {
                     "",
                     Grammar {
                         rules: vec![
-                            Rule {
+                            Production {
                                 lhs: Lhs(Identifier("a".to_owned())),
                                 rhs: Rhs::Identifier(Identifier("b".to_owned())),
                             },
-                            Rule {
+                            Production {
                                 lhs: Lhs(Identifier("c".to_owned())),
                                 rhs: Rhs::Identifier(Identifier("d".to_owned())),
                             },
@@ -382,11 +382,11 @@ mod tests {
                     "",
                     Grammar {
                         rules: vec![
-                            Rule {
+                            Production {
                                 lhs: Lhs(Identifier("a".to_owned())),
                                 rhs: Rhs::Identifier(Identifier("b".to_owned())),
                             },
-                            Rule {
+                            Production {
                                 lhs: Lhs(Identifier("c".to_owned())),
                                 rhs: Rhs::Identifier(Identifier("d".to_owned())),
                             },

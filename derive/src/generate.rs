@@ -93,7 +93,7 @@ fn generate_rule_enum(grammar: &Grammar) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ebnf::{Grammar, Lhs, Rhs, Rule};
+    use ebnf::{Grammar, Lhs, Production, Rhs};
     use syn::parse_str;
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
         let ast = parse_str(def).unwrap();
         let got = grammar_from_ast(&ast).unwrap();
         let expected = Grammar {
-            rules: vec![Rule {
+            rules: vec![Production {
                 lhs: Lhs("a".into()),
                 rhs: Rhs::Identifier("b".into()),
             }],
