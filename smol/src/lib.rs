@@ -1,5 +1,5 @@
 use derive::Parser;
 
 #[derive(Parser)]
-#[ebnf_inline = "a = 'b' ;"]
+#[ebnf_file = "standard_ml.ebnf"]
 pub struct Parser;

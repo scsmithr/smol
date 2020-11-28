@@ -1,5 +1,8 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
+use std::env;
+use std::fs;
+use std::path::Path;
 use syn::{Attribute, DeriveInput, Generics, Ident, Lit, Meta};
 
 use ebnf::{Grammar, Production, Rhs};
@@ -49,8 +52,20 @@ fn grammar_from_ast(ast: &DeriveInput) -> Result<Grammar> {
         Ok(Meta::NameValue(val)) => match val.lit {
             Lit::Str(s) => {
                 if val.path.is_ident(EBNF_FILE_ATTR) {
-                    // TODO: Load file
-                    unimplemented!("load ebnf file");
+                    let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+                    let path = Path::new(&root).join(&s.value());
+                    let data = match fs::read_to_string(path.clone()) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            return Err(DeriveError::Other(format!(
+                                "read ebnf file: {}, {}",
+                                path.to_string_lossy(),
+                                e
+                            )))
+                        }
+                    };
+                    let grammar: Grammar = data.parse().unwrap();
+                    Ok(grammar)
                 } else {
                     let grammar: Grammar = s.value().parse().unwrap();
                     Ok(grammar)
@@ -169,7 +184,13 @@ fn generate_rhs_expression(rhs: &Rhs) -> TokenStream {
                 #rhs1_expr.and_then(|state| #rhs2_expr)
             }
         }
-        _ => unimplemented!("exception, group"),
+        Rhs::Group(rhs) => {
+            let rhs_expr = generate_rhs_expression(rhs);
+            quote! {
+                state.apply(#rhs_expr)
+            }
+        }
+        _ => unimplemented!("exception"),
     }
 }
 
