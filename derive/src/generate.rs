@@ -2,7 +2,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Attribute, DeriveInput, Generics, Ident, Lit, Meta};
 
-use ebnf::Grammar;
+use ebnf::{Grammar, Production, Rhs};
 
 use crate::error::{DeriveError, Result};
 
@@ -14,8 +14,8 @@ pub fn generate(ast: DeriveInput) -> TokenStream {
     let name = ast.ident;
     let generics = ast.generics;
 
-    let generated_impl = generate_impl(name, &generics, &grammar);
     let generated_rules = generate_rule_enum(&grammar);
+    let generated_impl = generate_impl(name, &generics, grammar);
 
     quote! {
         #generated_rules
@@ -63,24 +63,124 @@ fn grammar_from_ast(ast: &DeriveInput) -> Result<Grammar> {
     }
 }
 
-fn generate_impl(name: Ident, generics: &Generics, grammar: &Grammar) -> TokenStream {
+/// Generate the parser implmentation from the grammar.
+///
+/// Individual rule functions are are generated in a nested `rule_impls` module
+/// to prevent name clashes.
+fn generate_impl(name: Ident, generics: &Generics, grammar: Grammar) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    let gen_patterns = generate_patterns(&grammar);
+    let gen_rules: Vec<TokenStream> = grammar
+        .rules
+        .into_iter()
+        .map(generate_rule_function)
+        .collect();
 
     let parse_impl = quote! {
         impl #impl_generics parsegen::Parser<Rule> for #name #ty_generics #where_clause {
             fn parse(rule: Rule, input: &str) -> anyhow::Result<std::vec::Vec<parsegen::Token<Rule>>> {
-                Err(anyhow::anyhow!("generated"))
+                mod rule_impls {
+                    #( #gen_rules )*
+                }
+
+                let state = parsegen::State::new(input)?;
+                let res = #gen_patterns
+
+                let end_state = res.map_err(|_| anyhow::anyhow!("parsing failed"))?;
+                Ok(end_state.tokens())
             }
         }
     };
     parse_impl
 }
 
-fn generate_rule_enum(grammar: &Grammar) -> TokenStream {
-    let rules = grammar
+/// Generate the pattern match for a grammar. Each rule will have itself matched
+/// with a function of the same name in the `rule_impls` module.
+fn generate_patterns(grammar: &Grammar) -> TokenStream {
+    let gen_rules: Vec<TokenStream> = grammar
         .rules
         .iter()
-        .map(|rule| Ident::new(&rule.lhs.to_string(), Span::call_site()));
+        .map(|rule| {
+            let rule = Ident::new(&rule.lhs.to_string(), Span::call_site());
+            quote! {
+                Rule::#rule => rule_impls::#rule(state)
+            }
+        })
+        .collect();
+
+    quote! {
+        match rule {
+            #( #gen_rules ),*
+        };
+    }
+}
+
+/// Generates a rule function for the provided rule.
+fn generate_rule_function(rule: Production) -> TokenStream {
+    let name = Ident::new(&rule.lhs.to_string(), Span::call_site());
+    let gen_expr = generate_rhs_expression(&rule.rhs);
+    quote! {
+        pub fn #name(state: parsegen::State<super::Rule>) -> parsegen::StateResult<parsegen::State<super::Rule>> {
+            state.tokenize(super::Rule::#name, |state| {
+                #gen_expr
+            })
+        }
+    }
+}
+
+fn generate_rhs_expression(rhs: &Rhs) -> TokenStream {
+    match rhs {
+        Rhs::Identifier(id) => {
+            let ident = Ident::new(&id.to_string(), Span::call_site());
+            quote! {
+                #ident(state)
+            }
+        }
+        Rhs::Terminal(term) => {
+            let str = format!("\"{}\"", term);
+            quote! {
+                state.match_str(#str)
+            }
+        }
+        Rhs::Optional(rhs) => {
+            let rhs_expr = generate_rhs_expression(rhs);
+            quote! {
+                state.optional(|state| #rhs_expr)
+            }
+        }
+        Rhs::Repeat(rhs) => {
+            let rhs_expr = generate_rhs_expression(rhs);
+            quote! {
+                state.repeat(|state| #rhs_expr)
+            }
+        }
+        Rhs::Alternation(rhs1, rhs2) => {
+            let rhs1_expr = generate_rhs_expression(rhs1);
+            let rhs2_expr = generate_rhs_expression(rhs2);
+            quote! {
+                #rhs1_expr.or_else(|state| #rhs2_expr)
+            }
+        }
+        Rhs::Concatenation(rhs1, rhs2) => {
+            let rhs1_expr = generate_rhs_expression(rhs1);
+            let rhs2_expr = generate_rhs_expression(rhs2);
+            quote! {
+                #rhs1_expr.and_then(|state| #rhs2_expr)
+            }
+        }
+        _ => unimplemented!("exception, group"),
+    }
+}
+
+/// Generate enum variants for each rule.
+fn generate_rule_enum(grammar: &Grammar) -> TokenStream {
+    let rules = grammar.rules.iter().map(|rule| {
+        let ident = Ident::new(&rule.lhs.to_string(), Span::call_site());
+        quote! {
+            #ident
+        }
+    });
 
     quote! {
         #[derive(Copy, Debug, Eq, Clone, PartialEq)]
@@ -107,7 +207,7 @@ mod tests {
         let name = ast.ident;
         let generics = ast.generics;
         let g: Grammar = "a = 'b' ;".parse().unwrap();
-        let ts = generate_impl(name, &generics, &g);
+        let ts = generate_impl(name, &generics, g);
         println!("Generated:\n{}", ts.to_string());
     }
 
