@@ -1,6 +1,8 @@
 use anyhow::anyhow; // TODO: Proper errors
+use std::cmp::Ordering;
 
 use crate::ParserRule;
+use crate::Token;
 
 pub type StateResult<T> = Result<T, T>;
 
@@ -21,25 +23,105 @@ impl<'a, R: ParserRule> State<'a, R> {
         })
     }
 
+    /// Returns a vector of parsed tokens. Tokens are returned in a DFSish
+    /// order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use parsegen::{State, StateResult};
+    /// #[allow(non_camel_case_types)]
+    /// #[derive(Copy, Debug, Eq, Clone, PartialEq)]
+    /// enum Rule {
+    ///     a,
+    ///     b,
+    ///     ab,
+    ///     ababa,
+    /// }
+    ///
+    /// let input = "ababa";
+    ///     let state = State::new(input).unwrap();
+    /// fn a(state: State<Rule>) -> StateResult<State<Rule>> {
+    ///     state.tokenize(Rule::a, |s| s.match_str("a"))
+    /// }
+    /// fn b(state: State<Rule>) -> StateResult<State<Rule>> {
+    ///     state.tokenize(Rule::b, |s| s.match_str("b"))
+    /// }
+    /// fn ab(state: State<Rule>) -> StateResult<State<Rule>> {
+    ///     state.tokenize(Rule::ab, |s| a(s).and_then(b))
+    /// }
+    /// fn ababa(state: State<Rule>) -> StateResult<State<Rule>> {
+    ///     state.tokenize(Rule::ababa, |s| ab(s).and_then(ab).and_then(a))
+    /// }
+    ///
+    /// let toks = ababa(state).unwrap().tokens();
+    /// assert_eq!(toks.len(), 8);
+    /// assert_eq!(toks[0].rule(), Rule::ababa);
+    /// assert_eq!(toks[1].rule(), Rule::ab);
+    /// assert_eq!(toks[2].rule(), Rule::a);
+    /// assert_eq!(toks[3].rule(), Rule::b);
+    /// assert_eq!(toks[4].rule(), Rule::ab);
+    /// assert_eq!(toks[5].rule(), Rule::a);
+    /// assert_eq!(toks[6].rule(), Rule::b);
+    /// assert_eq!(toks[7].rule(), Rule::a);
+    /// ```
     pub fn tokens(self) -> Vec<Token<'a, R>> {
         self.tokens
     }
 
     /// Tokenizes for some rule using the provided function. Errors resulting
     /// from the function will result in an unmodified state.
+    ///
+    /// Internally this tracks tokens in a tree-like fashion.
     pub fn tokenize<F>(self: Self, rule: R, f: F) -> StateResult<Self>
     where
         F: Fn(Self) -> StateResult<Self>,
     {
+        // Keep track of starting position so we can keep an accurate span for
+        // the rule.
         let start = self.cursor.clone();
+
+        // What index are we currently on? This will be needed to resort tokens
+        // so that they're in the correct order.
+        let tok_len = self.tokens.len();
+
         match f(self) {
             Ok(mut state) => {
                 let end = state.cursor.clone();
                 // TODO: Figure out good way to preserve state. Unwrapping to
                 // avoid thinking about for now.
                 let span = Span::from_positions(&start, &end).unwrap();
-                let token = Token { rule, span };
+                let token = Token::new(rule, span);
                 state.tokens.push(token);
+
+                // Resort tokens so that the longest token is first within the
+                // region of tokens we've added.
+                //
+                // TODO: This is interesting... should probably make some data
+                // structure for this.
+                let mut added = Vec::new();
+                while state.tokens.len() > tok_len {
+                    if let Some(v) = state.tokens.pop() {
+                        added.push(v);
+                    }
+                }
+                added.sort_by(|a, b| {
+                    if a.span.contains(&b.span).unwrap() || a.span.start < b.span.start {
+                        // "Parent" tokens and tokens that come earlier in the
+                        // input should be ordered first.
+                        Ordering::Less
+                    } else if a.span.start >= b.span.end {
+                        // Tokens that come after should be ordered later.
+                        Ordering::Greater
+                    } else {
+                        // This should be close enough to making sure siblings
+                        // are ordered in the way they were parsed, since 'b'
+                        // can never be the parent of 'a'.
+                        Ordering::Equal
+                    }
+                });
+                state.tokens.append(&mut added);
+
                 Ok(state)
             }
             Err(state) => Err(state),
@@ -93,7 +175,7 @@ impl<'a, R: ParserRule> State<'a, R> {
 
 /// Keep track of a position within a str, updating on successful operations.
 #[derive(Debug, Clone)]
-struct Position<'a> {
+pub struct Position<'a> {
     input: &'a str,
     idx: usize,
 }
@@ -136,32 +218,16 @@ impl<'a> Position<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct Token<'a, R: ParserRule> {
-    rule: R,
-    span: Span<'a>,
-}
-
-impl<'a, R: ParserRule> Token<'a, R> {
-    pub fn rule(&self) -> R {
-        self.rule
-    }
-
-    pub fn as_str(&self) -> &'a str {
-        self.span.as_str()
-    }
-}
-
 /// A region over a string.
 #[derive(Debug)]
-struct Span<'a> {
+pub struct Span<'a> {
     s: &'a str,
     start: usize,
     end: usize,
 }
 
 impl<'a> Span<'a> {
-    fn from_positions(start: &Position<'a>, end: &Position<'a>) -> Result<Self, anyhow::Error> {
+    pub fn from_positions(start: &Position<'a>, end: &Position<'a>) -> Result<Self, anyhow::Error> {
         if start.input != end.input {
             Err(anyhow!(
                 "positions on different strings: '{}', '{}'",
@@ -183,8 +249,27 @@ impl<'a> Span<'a> {
         }
     }
 
-    fn as_str(&self) -> &'a str {
+    pub fn as_str(&self) -> &'a str {
         &self.s[self.start..self.end]
+    }
+
+    /// Check if this span contains the entirety of the other span. Both spans
+    /// should be acting on the same input.
+    pub fn contains(&self, other: &Self) -> Result<bool, anyhow::Error> {
+        if self.s != other.s {
+            return Err(anyhow!(
+                "span inputs differ, self: '{}', other: '{}'",
+                self.s,
+                other.s
+            ));
+        }
+        Ok(self.start <= other.start && self.end >= other.end)
+    }
+}
+
+impl<'a> PartialEq for Span<'a> {
+    fn eq(&self, other: &Span<'a>) -> bool {
+        self.as_str() == other.as_str()
     }
 }
 

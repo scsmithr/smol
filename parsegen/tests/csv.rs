@@ -50,7 +50,9 @@ impl Parser<Rule> for CsvParser {
         };
 
         fn field(state: State<Rule>) -> StateResult<State<Rule>> {
-            state.tokenize(Rule::field, |s| s.repeat(digit))
+            state.tokenize(Rule::field, |s| {
+                s.apply(digit).and_then(|s| s.repeat(digit))
+            })
         }
 
         fn fields(state: State<Rule>) -> StateResult<State<Rule>> {

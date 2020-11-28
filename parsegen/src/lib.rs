@@ -2,8 +2,10 @@ use anyhow::Result;
 use std::fmt::Debug;
 
 mod state;
+mod tokens;
 
-pub use state::{State, StateResult, Token};
+pub use state::{State, StateResult};
+pub use tokens::Token;
 
 pub trait ParserRule: Copy + Debug + Eq {}
 
