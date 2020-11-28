@@ -2,7 +2,7 @@
 //! for generating the minimal parser.
 
 use anyhow::{anyhow, Result};
-use parsegen::{Parser, State, StateResult, Token};
+use parsegen::{DfsParseTreeIterator, Parser, State, StateResult, Token};
 
 /// A simplified set of parsing rules for our simple csv parser.
 #[allow(non_camel_case_types)]
@@ -33,7 +33,7 @@ enum Rule {
 struct CsvParser;
 
 impl Parser<Rule> for CsvParser {
-    fn parse(rule: Rule, input: &str) -> Result<Vec<Token<Rule>>> {
+    fn parse(rule: Rule, input: &str) -> Result<DfsParseTreeIterator<Rule>> {
         fn digit(state: State<Rule>) -> StateResult<State<Rule>> {
             state.tokenize(Rule::digit, |s| {
                 s.match_str("0")
@@ -82,14 +82,17 @@ impl Parser<Rule> for CsvParser {
             Rule::csv => csv(state),
         };
         let end_state = res.map_err(|_| anyhow!("parsing failed"))?;
-        Ok(end_state.tokens())
+        Ok(end_state.into_parse_tree_iter())
     }
 }
 
 #[test]
 fn digit() {
     let input = "7";
-    let toks = CsvParser::parse(Rule::digit, input).unwrap();
+    let toks: Vec<_> = CsvParser::parse(Rule::digit, input)
+        .unwrap()
+        .into_iter()
+        .collect();
 
     assert_eq!(toks.len(), 1, "unexpected number of tokens: {:?}", toks);
     assert_eq!(toks[0].rule(), Rule::digit);
@@ -99,7 +102,10 @@ fn digit() {
 #[test]
 fn field() {
     let input = "789";
-    let toks = CsvParser::parse(Rule::field, input).unwrap();
+    let toks: Vec<_> = CsvParser::parse(Rule::field, input)
+        .unwrap()
+        .into_iter()
+        .collect();
 
     let field_toks: Vec<Token<Rule>> = toks
         .into_iter()
@@ -117,7 +123,10 @@ fn field() {
 #[test]
 fn fields() {
     let input = "123,789";
-    let toks = CsvParser::parse(Rule::fields, input).unwrap();
+    let toks: Vec<_> = CsvParser::parse(Rule::fields, input)
+        .unwrap()
+        .into_iter()
+        .collect();
 
     let field_toks: Vec<&Token<Rule>> = toks.iter().filter(|t| t.rule() == Rule::field).collect();
     assert_eq!(field_toks[0].as_str(), "123");
@@ -130,7 +139,10 @@ fn fields() {
 #[test]
 fn record() {
     let input = "123,789\n";
-    let toks = CsvParser::parse(Rule::record, input).unwrap();
+    let toks: Vec<_> = CsvParser::parse(Rule::record, input)
+        .unwrap()
+        .into_iter()
+        .collect();
 
     let record_toks: Vec<&Token<Rule>> = toks.iter().filter(|t| t.rule() == Rule::record).collect();
     assert_eq!(record_toks.len(), 1);
@@ -139,7 +151,10 @@ fn record() {
 #[test]
 fn csv() {
     let input = "184,754\n33,22222\n";
-    let toks = CsvParser::parse(Rule::csv, input).unwrap();
+    let toks: Vec<_> = CsvParser::parse(Rule::csv, input)
+        .unwrap()
+        .into_iter()
+        .collect();
 
     let record_toks: Vec<&Token<Rule>> = toks.iter().filter(|t| t.rule() == Rule::record).collect();
     assert_eq!(record_toks.len(), 2, "tokens: {:?}", toks);

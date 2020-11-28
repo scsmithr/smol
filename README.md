@@ -12,3 +12,6 @@ because Rust's proc macros require separate crates).
 * `parsegen`: Utilities for parser generation.
 * `derive`: Parser code generation using proc macros.
 
+## Resources
+
+* [Standard ML Grammar (BNF)](https://people.mpi-sws.org/~rossberg/sml.html#notation)

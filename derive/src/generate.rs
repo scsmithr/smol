@@ -94,7 +94,7 @@ fn generate_impl(name: Ident, generics: &Generics, grammar: Grammar) -> TokenStr
 
     let parse_impl = quote! {
         impl #impl_generics parsegen::Parser<Rule> for #name #ty_generics #where_clause {
-            fn parse(rule: Rule, input: &str) -> anyhow::Result<std::vec::Vec<parsegen::Token<Rule>>> {
+            fn parse(rule: Rule, input: &str) -> anyhow::Result<parsegen::DfsParseTreeIterator<Rule>> {
                 mod rule_impls {
                     #( #gen_rules )*
                 }
@@ -103,7 +103,7 @@ fn generate_impl(name: Ident, generics: &Generics, grammar: Grammar) -> TokenStr
                 let res = #gen_patterns
 
                 let end_state = res.map_err(|_| anyhow::anyhow!("parsing failed"))?;
-                Ok(end_state.tokens())
+                Ok(end_state.into_parse_tree_iter())
             }
         }
     };
