@@ -4,9 +4,9 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_until, take_while},
     character::complete::{alpha1, alphanumeric1, space0},
-    combinator::recognize,
+    combinator::{opt, recognize},
     multi::many0,
-    sequence::{delimited, pair, preceded, separated_pair, terminated},
+    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
     IResult,
 };
 
@@ -86,10 +86,33 @@ pub fn production(input: &str) -> IResult<&str, Production> {
 ///
 /// Grammars contain 0 or more rules. Rules must be separated with ';'
 /// characters, optionally followed by newline(s).
+///
+/// Comments and whitespace around rules are discarded.
 pub fn grammar(input: &str) -> IResult<&str, Grammar> {
-    let whitespace = take_while(move |c| " \t\r\n".contains(c));
-    let (rem, rules) = many0(preceded(whitespace, production))(input)?;
+    // Strip out comments and whitespace from before and after each production
+    // rule.
+    let (rem, rules) = many0(terminated(
+        preceded(comment_and_whitespace, production),
+        comment_and_whitespace,
+    ))(input)?;
     Ok((rem, Grammar { rules }))
+}
+
+fn comment_and_whitespace(input: &str) -> IResult<&str, &str> {
+    alt((
+        terminated(preceded(whitespace, comment), whitespace),
+        whitespace,
+    ))(input)
+}
+
+fn comment(input: &str) -> IResult<&str, &str> {
+    let (rem, matched) = delimited(tag("(*"), take_until("*)"), tag("*)"))(input)?;
+    Ok((rem, matched))
+}
+
+fn whitespace(input: &str) -> IResult<&str, &str> {
+    let (rem, matched) = take_while(move |c| " \t\r\n".contains(c))(input)?;
+    Ok((rem, matched))
 }
 
 fn rhs_identifier(input: &str) -> IResult<&str, Rhs> {
@@ -115,6 +138,7 @@ fn rhs_alternation(input: &str) -> IResult<&str, Rhs> {
 }
 
 fn rhs_concatenation(input: &str) -> IResult<&str, Rhs> {
+    // TODO: Doesn't handle continued concats.
     let (rem, (matched1, matched2)) = separated_pair(take_until(","), tag(","), rhs)(input)?;
     let (_, inner1) = rhs(matched1)?;
     Ok((
@@ -360,6 +384,24 @@ mod tests {
             },
             TestCase {
                 input: "a = b; c = d;",
+                out: Some(Ok((
+                    "",
+                    Grammar {
+                        rules: vec![
+                            Production {
+                                lhs: Lhs(Identifier("a".to_owned())),
+                                rhs: Rhs::Identifier(Identifier("b".to_owned())),
+                            },
+                            Production {
+                                lhs: Lhs(Identifier("c".to_owned())),
+                                rhs: Rhs::Identifier(Identifier("d".to_owned())),
+                            },
+                        ],
+                    },
+                ))),
+            },
+            TestCase {
+                input: "a = b;\n (* This is a comment *)\n c = d;",
                 out: Some(Ok((
                     "",
                     Grammar {

@@ -15,3 +15,4 @@ because Rust's proc macros require separate crates).
 ## Resources
 
 * [Standard ML Grammar (BNF)](https://people.mpi-sws.org/~rossberg/sml.html#notation)
+* [The Definition of Standard ML](https://smlfamily.github.io/sml97-defn.pdf)

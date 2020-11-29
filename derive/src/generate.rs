@@ -14,6 +14,7 @@ const EBNF_INLINE_ATTR: &str = "ebnf_inline";
 
 pub fn generate(ast: DeriveInput) -> TokenStream {
     let grammar = grammar_from_ast(&ast).unwrap();
+    println!("grammar: {}", grammar);
     let name = ast.ident;
     let generics = ast.generics;
 
@@ -102,7 +103,7 @@ fn generate_impl(name: Ident, generics: &Generics, grammar: Grammar) -> TokenStr
                 let state = parsegen::State::new(input)?;
                 let res = #gen_patterns
 
-                let end_state = res.map_err(|_| anyhow::anyhow!("parsing failed"))?;
+                let end_state = res.map_err(|s| anyhow::anyhow!("parsing failed: {:?}", s))?;
                 Ok(end_state.into_parse_tree_iter())
             }
         }
@@ -135,13 +136,15 @@ fn generate_patterns(grammar: &Grammar) -> TokenStream {
 fn generate_rule_function(rule: Production) -> TokenStream {
     let name = Ident::new(&rule.lhs.to_string(), Span::call_site());
     let gen_expr = generate_rhs_expression(&rule.rhs);
-    quote! {
+    let gen = quote! {
         pub fn #name(state: parsegen::State<super::Rule>) -> parsegen::StateResult<parsegen::State<super::Rule>> {
+            println!("name: {:?}", super::Rule::#name);
             state.tokenize(super::Rule::#name, |state| {
                 #gen_expr
             })
         }
-    }
+    };
+    gen
 }
 
 fn generate_rhs_expression(rhs: &Rhs) -> TokenStream {
@@ -153,7 +156,7 @@ fn generate_rhs_expression(rhs: &Rhs) -> TokenStream {
             }
         }
         Rhs::Terminal(term) => {
-            let str = format!("\"{}\"", term);
+            let str = &term.0;
             quote! {
                 state.match_str(#str)
             }
@@ -187,7 +190,7 @@ fn generate_rhs_expression(rhs: &Rhs) -> TokenStream {
         Rhs::Group(rhs) => {
             let rhs_expr = generate_rhs_expression(rhs);
             quote! {
-                state.apply(#rhs_expr)
+                state.apply(|state| #rhs_expr)
             }
         }
         _ => unimplemented!("exception"),
